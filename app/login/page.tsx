@@ -1,126 +1,128 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function LoginPage() {
+  const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [mode, setMode] = useState<"login" | "signup">("login");
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleAuth() {
+  async function signInWithEmail(e: React.FormEvent) {
+    e.preventDefault();
     setMsg(null);
+    setLoading(true);
 
-    if (!email.trim() || !password.trim()) {
-      setMsg("Please enter email and password.");
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    setLoading(false);
+
+    if (error) {
+      setMsg(error.message);
       return;
     }
 
+    router.push("/");
+    router.refresh();
+  }
+
+  async function signUpWithEmail() {
+    setMsg(null);
     setLoading(true);
 
-    try {
-      if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
+    const { error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+    });
 
-        if (error) {
-          setMsg(error.message);
-        } else {
-          window.location.href = "/";
-        }
-      } else {
-        const { error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-        });
+    setLoading(false);
 
-        if (error) {
-          setMsg(error.message);
-        } else {
-          setMsg("Account created. You can now sign in.");
-          setMode("login");
-        }
-      }
-    } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Authentication failed.");
-    } finally {
-      setLoading(false);
+    if (error) {
+      setMsg(error.message);
+      return;
     }
+
+    setMsg("Account created. Check your email if confirmation is enabled.");
+  }
+
+  async function signInWithGoogle() {
+    setMsg(null);
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    if (error) setMsg(error.message);
   }
 
   return (
-    <main className="app-shell">
-      <div className="app-bg-orb orb-1" />
-      <div className="app-bg-orb orb-2" />
-      <div className="app-bg-orb orb-3" />
+    <main className="login-shell">
+      <div className="login-card">
+        <div className="login-top-glow" />
 
-      <section className="auth-card">
-        <div className="hero-top-pill" />
+        <h1 className="login-title">Welcome back</h1>
+        <p className="login-subtitle">Sign in to access your Mini Library</p>
 
-        <div className="auth-header">
-          <h1>{mode === "login" ? "Welcome back" : "Create account"}</h1>
-          <p>
-            {mode === "login"
-              ? "Sign in to access your Mini Library"
-              : "Create a new account to use the library system"}
-          </p>
-        </div>
+        {msg && <p className="login-msg">{msg}</p>}
 
-        <div className="auth-form">
+        <form onSubmit={signInWithEmail} className="login-form">
           <input
-            className="ui-input"
             type="email"
             placeholder="Email address"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            className="login-input"
+            required
           />
 
           <input
-            className="ui-input"
             type="password"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            className="login-input"
+            required
           />
 
-          {msg && <div className="ui-alert">{msg}</div>}
-
-          <button className="btn btn-primary auth-submit" onClick={handleAuth} disabled={loading}>
-            {loading
-              ? "Please wait..."
-              : mode === "login"
-              ? "Sign In"
-              : "Create Account"}
+          <button type="submit" className="login-btn primary" disabled={loading}>
+            {loading ? "Signing in..." : "Sign In"}
           </button>
-        </div>
+        </form>
 
-        <div className="auth-footer">
-          {mode === "login" ? (
-            <p>
-              Don’t have an account?{" "}
-              <button className="link-btn" onClick={() => setMode("signup")}>
-                Create one
-              </button>
-            </p>
-          ) : (
-            <p>
-              Already have an account?{" "}
-              <button className="link-btn" onClick={() => setMode("login")}>
-                Sign in
-              </button>
-            </p>
-          )}
+        {/* GOOGLE BUTTON */}
+        <button
+          type="button"
+          onClick={signInWithGoogle}
+          className="login-btn google"
+        >
+          Continue with Google
+        </button>
 
-          <Link href="/" className="back-link">
-            ← Back to Home
-          </Link>
+        <button
+          type="button"
+          onClick={signUpWithEmail}
+          className="login-btn ghost"
+          disabled={loading}
+          style={{ marginTop: 10 }}
+        >
+          Create account
+        </button>
+
+        <div className="login-links">
+          <Link href="/">← Back to Home</Link>
         </div>
-      </section>
+      </div>
     </main>
   );
 }

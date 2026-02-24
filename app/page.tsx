@@ -4,88 +4,126 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function Home() {
-  const [email, setEmail] = useState<string | null>(null);
+type UserInfo = {
+  email: string | null;
+};
+
+export default function HomePage() {
+  const [user, setUser] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setEmail(data.user?.email ?? null);
-      setLoading(false);
-    });
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setEmail(session?.user?.email ?? null);
-    });
-
-    return () => sub.subscription.unsubscribe();
-  }, []);
-
-  async function logout() {
-    await supabase.auth.signOut();
-    location.href = "/login";
+  async function loadUser() {
+    const { data } = await supabase.auth.getUser();
+    const email = data.user?.email ?? null;
+    setUser(email ? { email } : null);
+    setLoading(false);
   }
 
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    setUser(null);
+    window.location.href = "/";
+  }
+
+  useEffect(() => {
+    (async () => {
+      await loadUser();
+    })();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      loadUser();
+    });
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
   return (
-    <main className="container">
-      <div className="card">
-        <div className="header">
+    <main className="app-shell">
+      <div className="app-bg-orb orb-1" />
+      <div className="app-bg-orb orb-2" />
+      <div className="app-bg-orb orb-3" />
+
+      <section className="hero-card">
+        <div className="hero-top-pill" />
+
+        <div className="hero-header">
           <div>
-            <h1 className="h1">📚 Mini Library</h1>
-            <p className="muted" style={{ marginTop: 6 }}>
-              Manage books, borrowing, search, and AI summaries.
+            <h1 className="hero-title">📚 Mini Library</h1>
+            <p className="hero-subtitle">
+              Manage books, borrowing, stock, and AI-generated summaries in one place.
             </p>
           </div>
 
-          <div className="badge">
-            {loading ? "Checking session..." : email ? "✅ Signed in" : "❌ Not signed in"}
+          <div className="hero-badge">
+            {loading ? "Checking..." : user ? "✅ Signed in" : "🔒 Guest"}
           </div>
         </div>
 
-        <div className="notice" style={{ marginTop: 10 }}>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span className="muted">
-              {email ? (
-                <>
-                  Signed in as <b style={{ color: "var(--text)" }}>{email}</b>
-                </>
-              ) : (
-                <>
-                  You are not signed in. Go to <b>Login</b> to continue.
-                </>
-              )}
-            </span>
+        {user ? (
+          <>
+            <div className="info-card">
+              <div>
+                <div className="info-label">Signed in as</div>
+                <div className="info-value">{user.email}</div>
+              </div>
 
-            <span style={{ marginLeft: "auto" }} />
-            {email ? (
-              <button className="btn-danger" onClick={logout}>
+              <button className="btn btn-danger" onClick={handleLogout}>
                 Logout
               </button>
-            ) : (
-              <Link href="/login">
-                <button className="btn-primary">Go to Login</button>
+            </div>
+
+            <div className="button-row">
+              <Link href="/books" className="btn btn-primary">
+                📚 Open Books
               </Link>
-            )}
-          </div>
-        </div>
+            </div>
 
-        <div style={{ marginTop: 18 }} className="row">
-          <Link href="/books">
-            <button className="btn-primary">📚 Open Books</button>
-          </Link>
+            <div className="feature-grid">
+              <div className="feature-card">
+                <h3>📖 Borrowing</h3>
+                <p>
+                  Borrow and return books with borrower details (name, email, phone).
+                </p>
+              </div>
 
-        </div>
+              <div className="feature-card">
+                <h3>📦 Stock Tracking</h3>
+                <p>
+                  Track total quantity, available copies, and borrowed copies per title.
+                </p>
+              </div>
 
-        <div style={{ marginTop: 18 }} className="notice">
-          <b>What you can do:</b>
-          <ul style={{ margin: "10px 0 0 18px", color: "var(--muted)" }}>
-            <li>Add / delete books (admin/librarian)</li>
-            <li>Borrow / return books (any signed-in user)</li>
-            <li>Search by title or author</li>
-            <li>Generate AI summary + tags before adding a book</li>
-          </ul>
-        </div>
-      </div>
+              <div className="feature-card">
+                <h3>✨ AI Summaries</h3>
+                <p>
+                  Generate short AI summaries and tags before adding a book.
+                </p>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="info-card">
+              <div>
+                <div className="info-label">Authentication</div>
+                <div className="info-value">You are not signed in</div>
+              </div>
+
+              <Link href="/login" className="btn btn-primary">
+                Go to Login
+              </Link>
+            </div>
+
+            <div className="guest-note">
+              <p>
+                Sign in first to borrow books and manage library records.
+              </p>
+            </div>
+          </>
+        )}
+      </section>
     </main>
   );
 }

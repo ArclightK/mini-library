@@ -111,7 +111,6 @@ export default function BooksPage() {
   async function loadBooks() {
     setMsg(null);
 
-    // 1) Load books first (safe, no relationship dependency)
     const { data: booksData, error: booksError } = await supabase
       .from("books")
       .select(
@@ -126,7 +125,6 @@ export default function BooksPage() {
 
     const rawBooks = (booksData as BookRow[]) ?? [];
 
-    // 2) Get borrower profile rows for borrowed_by users
     const borrowerIds = Array.from(
       new Set(rawBooks.map((b) => b.borrowed_by).filter(Boolean))
     ) as string[];
@@ -140,7 +138,6 @@ export default function BooksPage() {
         .in("id", borrowerIds);
 
       if (profilesError) {
-        // Keep books loading even if profile fetch fails
         setMsg(profilesError.message);
       } else {
         profilesMap = new Map(
@@ -227,7 +224,6 @@ export default function BooksPage() {
       return;
     }
 
-    // Save borrower profile details
     const { error: profileErr } = await supabase.from("profiles").upsert(
       {
         id: userId,
@@ -243,7 +239,6 @@ export default function BooksPage() {
       return;
     }
 
-    // Borrow one copy
     const newAvailable = currentAvailable - 1;
 
     const { error } = await supabase
@@ -314,16 +309,22 @@ export default function BooksPage() {
   }
 
   return (
-    <main className="books-page">
-      <div className="books-shell">
-        <div className="books-topGlow" />
+    <main className="app-shell">
+      <div className="app-bg-orb orb-1" />
+      <div className="app-bg-orb orb-2" />
+      <div className="app-bg-orb orb-3" />
+
+      <section className="books-shell">
+        <div className="hero-top-pill" />
 
         <div className="books-header">
           <div>
             <h1 className="books-title">📚 Books</h1>
-            <p className="books-subtitle">Manage books, borrowers, stock, and AI summaries</p>
+            <p className="books-subtitle">
+              Manage books, borrowers, stock, and AI summaries
+            </p>
           </div>
-          <div className="books-roleBadge">
+          <div className="hero-badge">
             Role: <strong>{role}</strong>
           </div>
         </div>
@@ -334,52 +335,52 @@ export default function BooksPage() {
           </Link>
         </div>
 
-        {msg && <div className="books-alert">{msg}</div>}
+        {msg && <div className="ui-alert">{msg}</div>}
 
         {(role === "admin" || role === "librarian") && (
-          <section className="books-panel">
-            <h2 className="books-panelTitle">Add a book</h2>
+          <section className="ui-panel">
+            <h2 className="section-title">Add a book</h2>
 
-            <div className="books-formGrid">
+            <div className="books-form-grid">
               <input
-                className="books-input"
+                className="ui-input"
                 placeholder="Book title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
               <input
-                className="books-input"
+                className="ui-input"
                 placeholder="Author"
                 value={author}
                 onChange={(e) => setAuthor(e.target.value)}
               />
               <input
-                className="books-input"
+                className="ui-input"
                 type="number"
                 min={1}
                 placeholder="Quantity"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
               />
-              <div className="books-actionRow">
-                <button className="books-btn books-btnPrimary" onClick={addBook}>
+              <div className="inline-actions">
+                <button className="btn btn-primary" onClick={addBook}>
                   Add
                 </button>
-                <button className="books-btn" onClick={generateAI}>
+                <button className="btn" onClick={generateAI}>
                   ✨ AI Summary
                 </button>
               </div>
             </div>
 
             {aiSummary && (
-              <div className="books-aiPreview">
+              <div className="mini-box">
                 <p>
                   <strong>AI Summary:</strong> {aiSummary}
                 </p>
                 {aiTags.length > 0 && (
-                  <div className="books-tagWrap">
+                  <div className="tag-wrap">
                     {aiTags.map((tag, i) => (
-                      <span key={i} className="books-tag">
+                      <span key={i} className="tag">
                         {tag}
                       </span>
                     ))}
@@ -390,32 +391,32 @@ export default function BooksPage() {
           </section>
         )}
 
-        <section className="books-panel">
-          <h2 className="books-panelTitle">Search & Borrower details</h2>
+        <section className="ui-panel">
+          <h2 className="section-title">Search & Borrower Details</h2>
 
-          <div className="books-stack">
+          <div className="stack">
             <input
-              className="books-input books-search"
+              className="ui-input search-input"
               placeholder="Search by title or author..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
 
-            <div className="books-formGrid books-formGridBorrower">
+            <div className="borrower-grid">
               <input
-                className="books-input"
+                className="ui-input"
                 placeholder="Your full name"
                 value={borrowFullName}
                 onChange={(e) => setBorrowFullName(e.target.value)}
               />
               <input
-                className="books-input"
+                className="ui-input"
                 placeholder="Your email"
                 value={borrowEmail}
                 onChange={(e) => setBorrowEmail(e.target.value)}
               />
               <input
-                className="books-input"
+                className="ui-input"
                 placeholder="Your phone"
                 value={borrowPhone}
                 onChange={(e) => setBorrowPhone(e.target.value)}
@@ -424,11 +425,9 @@ export default function BooksPage() {
           </div>
         </section>
 
-        <section className="books-listSection">
+        <section className="books-list-section">
           {filteredBooks.length === 0 ? (
-            <div className="books-emptyState">
-              <p>No books found.</p>
-            </div>
+            <div className="empty-card">No books found.</div>
           ) : (
             <ul className="books-list">
               {filteredBooks.map((b) => {
@@ -439,65 +438,49 @@ export default function BooksPage() {
                 const borrowedQty = Math.max(totalQty - availableQty, 0);
 
                 return (
-                  <li key={b.id} className="books-item">
-                    <div className="books-itemHeader">
+                  <li key={b.id} className="book-card">
+                    <div className="book-top">
                       <div>
-                        <h3 className="books-itemTitle">
-                          {b.title} <span className="books-itemDash">—</span> {b.author}
+                        <h3 className="book-title">
+                          {b.title} <span>—</span> {b.author}
                         </h3>
 
-                        <div className="books-statusRow">
+                        <div className="chip-row">
                           <span
-                            className={`books-statusChip ${
-                              b.is_borrowed ? "is-borrowed" : "is-available"
-                            }`}
+                            className={`chip ${b.is_borrowed ? "chip-warn" : "chip-ok"}`}
                           >
                             {b.is_borrowed ? "Borrowed" : "Available"}
                           </span>
-
-                          <span className="books-stockChip">
-                            Total: <strong>{totalQty}</strong>
-                          </span>
-                          <span className="books-stockChip">
-                            Left: <strong>{availableQty}</strong>
-                          </span>
-                          <span className="books-stockChip">
-                            Borrowed: <strong>{borrowedQty}</strong>
-                          </span>
+                          <span className="chip">Total: {totalQty}</span>
+                          <span className="chip">Left: {availableQty}</span>
+                          <span className="chip">Borrowed: {borrowedQty}</span>
                         </div>
                       </div>
                     </div>
 
                     {b.is_borrowed && (
-                      <div className="books-metaBlock">
-                        <div className="books-metaLine">
+                      <div className="borrow-meta">
+                        <div>
                           <strong>Borrowed by:</strong>{" "}
                           {b.borrowerProfile?.full_name || "Unknown"}
                         </div>
-
-                        <div className="books-metaLine books-metaLineWrap">
-                          {b.borrowerProfile?.email && (
-                            <span>📧 {b.borrowerProfile.email}</span>
-                          )}
-                          {b.borrowerProfile?.phone && (
-                            <span>📞 {b.borrowerProfile.phone}</span>
-                          )}
-                          {b.borrowed_at && (
-                            <span>🕒 {formatBorrowedAt(b.borrowed_at)}</span>
-                          )}
+                        <div className="borrow-meta-row">
+                          {b.borrowerProfile?.email && <span>📧 {b.borrowerProfile.email}</span>}
+                          {b.borrowerProfile?.phone && <span>📞 {b.borrowerProfile.phone}</span>}
+                          {b.borrowed_at && <span>🕒 {formatBorrowedAt(b.borrowed_at)}</span>}
                         </div>
                       </div>
                     )}
 
                     {b.ai_summary && (
-                      <div className="books-aiBox">
-                        <div className="books-aiLabel">AI Summary</div>
+                      <div className="ai-box">
+                        <div className="ai-label">AI Summary</div>
                         <p>{b.ai_summary}</p>
 
                         {Array.isArray(b.ai_tags) && b.ai_tags.length > 0 && (
-                          <div className="books-tagWrap">
+                          <div className="tag-wrap">
                             {b.ai_tags.map((tag, idx) => (
-                              <span key={idx} className="books-tag">
+                              <span key={idx} className="tag">
                                 {tag}
                               </span>
                             ))}
@@ -506,17 +489,14 @@ export default function BooksPage() {
                       </div>
                     )}
 
-                    <div className="books-itemActions">
+                    <div className="card-actions">
                       {b.is_borrowed ? (
-                        <button
-                          className="books-btn books-btnPrimary"
-                          onClick={() => returnBook(b)}
-                        >
+                        <button className="btn btn-primary" onClick={() => returnBook(b)}>
                           Return
                         </button>
                       ) : (
                         <button
-                          className="books-btn books-btnPrimary"
+                          className="btn btn-primary"
                           onClick={() => borrowBook(b)}
                           disabled={availableQty <= 0}
                         >
@@ -525,10 +505,7 @@ export default function BooksPage() {
                       )}
 
                       {(role === "admin" || role === "librarian") && (
-                        <button
-                          className="books-btn books-btnDanger"
-                          onClick={() => deleteBook(b.id)}
-                        >
+                        <button className="btn btn-danger" onClick={() => deleteBook(b.id)}>
                           Delete
                         </button>
                       )}
@@ -539,7 +516,7 @@ export default function BooksPage() {
             </ul>
           )}
         </section>
-      </div>
+      </section>
     </main>
   );
 }

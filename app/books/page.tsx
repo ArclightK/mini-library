@@ -1,28 +1,48 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
-type Book = {
+type BookRow = {
   id: string;
   title: string;
   author: string;
   is_borrowed: boolean;
   borrowed_by: string | null;
   borrowed_at: string | null;
-
   ai_summary?: string | null;
   ai_tags?: string[] | null;
+  created_at?: string;
+  total_quantity?: number | null;
+  available_quantity?: number | null;
+};
+
+type BorrowerProfile = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
+type Book = BookRow & {
+  borrowerProfile?: BorrowerProfile | null;
 };
 
 export default function BooksPage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
+  const [quantity, setQuantity] = useState("1");
+
   const [msg, setMsg] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+
   const [role, setRole] = useState<"admin" | "librarian" | "member">("member");
+
+  const [borrowFullName, setBorrowFullName] = useState("");
+  const [borrowEmail, setBorrowEmail] = useState("");
+  const [borrowPhone, setBorrowPhone] = useState("");
 
   const [aiSummary, setAiSummary] = useState("");
   const [aiTags, setAiTags] = useState<string[]>([]);
@@ -35,26 +55,31 @@ export default function BooksPage() {
       return;
     }
 
-    const res = await fetch("/api/ai/book", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: title.trim(), author: author.trim() }),
-    });
-
-    const text = await res.text();
-    let data: { ai_summary?: string; ai_tags?: string[]; error?: string; note?: string } = {};
     try {
-      data = JSON.parse(text);
-    } catch {
-      data = { error: text || "AI API returned empty response" };
-    }
+      const res = await fetch("/api/ai/book", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: title.trim(), author: author.trim() }),
+      });
 
-    if (data.error) setMsg(data.error);
-    else {
-      setAiSummary(data.ai_summary || "");
-      setAiTags(data.ai_tags || []);
-      // optional: show a note if fallback AI was used
-      if (data.note) setMsg(data.note);
+      const text = await res.text();
+      let data: { ai_summary?: string; ai_tags?: string[]; error?: string; note?: string } = {};
+
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { error: text || "AI API returned empty response" };
+      }
+
+      if (data.error) {
+        setMsg(data.error);
+      } else {
+        setAiSummary(data.ai_summary || "");
+        setAiTags(Array.isArray(data.ai_tags) ? data.ai_tags : []);
+        if (data.note) setMsg(data.note);
+      }
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "AI request failed");
     }
   }
 
@@ -74,22 +99,62 @@ export default function BooksPage() {
       .single();
 
     if (!error && data?.role) {
-      setRole((String(data.role).toLowerCase() as "admin" | "librarian" | "member") || "member");
+      const r = String(data.role).toLowerCase();
+      if (r === "admin" || r === "librarian" || r === "member") {
+        setRole(r);
+      } else {
+        setRole("member");
+      }
     }
   }
 
   async function loadBooks() {
     setMsg(null);
 
-    const { data, error } = await supabase
+    // 1) Load books first (safe, no relationship dependency)
+    const { data: booksData, error: booksError } = await supabase
       .from("books")
       .select(
-        "id,title,author,is_borrowed,borrowed_by,borrowed_at,ai_summary,ai_tags,created_at"
+        "id,title,author,is_borrowed,borrowed_by,borrowed_at,ai_summary,ai_tags,created_at,total_quantity,available_quantity"
       )
       .order("created_at", { ascending: false });
 
-    if (error) setMsg(error.message);
-    else setBooks((data as Book[]) ?? []);
+    if (booksError) {
+      setMsg(booksError.message);
+      return;
+    }
+
+    const rawBooks = (booksData as BookRow[]) ?? [];
+
+    // 2) Get borrower profile rows for borrowed_by users
+    const borrowerIds = Array.from(
+      new Set(rawBooks.map((b) => b.borrowed_by).filter(Boolean))
+    ) as string[];
+
+    let profilesMap = new Map<string, BorrowerProfile>();
+
+    if (borrowerIds.length > 0) {
+      const { data: profilesData, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id,full_name,email,phone")
+        .in("id", borrowerIds);
+
+      if (profilesError) {
+        // Keep books loading even if profile fetch fails
+        setMsg(profilesError.message);
+      } else {
+        profilesMap = new Map(
+          ((profilesData as BorrowerProfile[]) ?? []).map((p) => [p.id, p])
+        );
+      }
+    }
+
+    const merged: Book[] = rawBooks.map((b) => ({
+      ...b,
+      borrowerProfile: b.borrowed_by ? profilesMap.get(b.borrowed_by) ?? null : null,
+    }));
+
+    setBooks(merged);
   }
 
   async function addBook() {
@@ -100,21 +165,35 @@ export default function BooksPage() {
       return;
     }
 
+    const qty = Number(quantity);
+    if (!Number.isFinite(qty) || qty < 1) {
+      setMsg("Quantity must be at least 1.");
+      return;
+    }
+
     const { error } = await supabase.from("books").insert({
       title: title.trim(),
       author: author.trim(),
-      ai_summary: aiSummary,
-      ai_tags: aiTags,
+      ai_summary: aiSummary || null,
+      ai_tags: aiTags.length ? aiTags : null,
+      total_quantity: qty,
+      available_quantity: qty,
+      is_borrowed: false,
+      borrowed_by: null,
+      borrowed_at: null,
     });
 
-    if (error) setMsg(error.message);
-    else {
-      setTitle("");
-      setAuthor("");
-      setAiSummary("");
-      setAiTags([]);
-      await loadBooks();
+    if (error) {
+      setMsg(error.message);
+      return;
     }
+
+    setTitle("");
+    setAuthor("");
+    setQuantity("1");
+    setAiSummary("");
+    setAiTags([]);
+    await loadBooks();
   }
 
   async function deleteBook(id: string) {
@@ -126,7 +205,7 @@ export default function BooksPage() {
     else await loadBooks();
   }
 
-  async function borrowBook(id: string) {
+  async function borrowBook(book: Book) {
     setMsg(null);
 
     const { data: userData } = await supabase.auth.getUser();
@@ -137,21 +216,63 @@ export default function BooksPage() {
       return;
     }
 
+    if (!borrowFullName.trim() || !borrowEmail.trim() || !borrowPhone.trim()) {
+      setMsg("Please enter Full name, Email, and Phone before borrowing.");
+      return;
+    }
+
+    const currentAvailable = Number(book.available_quantity ?? 0);
+    if (currentAvailable <= 0) {
+      setMsg("No copies left for this book.");
+      return;
+    }
+
+    // Save borrower profile details
+    const { error: profileErr } = await supabase.from("profiles").upsert(
+      {
+        id: userId,
+        full_name: borrowFullName.trim(),
+        email: borrowEmail.trim(),
+        phone: borrowPhone.trim(),
+      },
+      { onConflict: "id" }
+    );
+
+    if (profileErr) {
+      setMsg("Profile update failed: " + profileErr.message);
+      return;
+    }
+
+    // Borrow one copy
+    const newAvailable = currentAvailable - 1;
+
     const { error } = await supabase
       .from("books")
       .update({
         is_borrowed: true,
         borrowed_by: userId,
         borrowed_at: new Date().toISOString(),
+        available_quantity: newAvailable,
       })
-      .eq("id", id);
+      .eq("id", book.id);
 
-    if (error) setMsg(error.message);
-    else await loadBooks();
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+
+    setBorrowFullName("");
+    setBorrowEmail("");
+    setBorrowPhone("");
+    await loadBooks();
   }
 
-  async function returnBook(id: string) {
+  async function returnBook(book: Book) {
     setMsg(null);
+
+    const currentAvailable = Number(book.available_quantity ?? 0);
+    const totalQty = Number(book.total_quantity ?? 1);
+    const nextAvailable = Math.min(currentAvailable + 1, totalQty);
 
     const { error } = await supabase
       .from("books")
@@ -159,8 +280,9 @@ export default function BooksPage() {
         is_borrowed: false,
         borrowed_by: null,
         borrowed_at: null,
+        available_quantity: nextAvailable,
       })
-      .eq("id", id);
+      .eq("id", book.id);
 
     if (error) setMsg(error.message);
     else await loadBooks();
@@ -173,97 +295,251 @@ export default function BooksPage() {
     })();
   }, []);
 
-  const filteredBooks = books.filter((b) => {
+  const filteredBooks = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q);
-  });
+    if (!q) return books;
+    return books.filter(
+      (b) =>
+        b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q)
+    );
+  }, [books, query]);
+
+  function formatBorrowedAt(v: string | null | undefined) {
+    if (!v) return "";
+    try {
+      return new Date(v).toLocaleString();
+    } catch {
+      return v;
+    }
+  }
 
   return (
-    <main style={{ padding: 40 }}>
-      <h1>📚 Books</h1>
+    <main className="books-page">
+      <div className="books-shell">
+        <div className="books-topGlow" />
 
-      <p>
-        Role: <b>{role}</b>
-      </p>
-
-      <p>
-        <Link href="/">← Home</Link>
-      </p>
-
-      {msg && <p style={{ color: "salmon" }}>{msg}</p>}
-
-      {(role === "admin" || role === "librarian") && (
-        <div style={{ display: "flex", gap: 8, marginTop: 16, alignItems: "center" }}>
-          <input
-            placeholder="Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-          <input
-            placeholder="Author"
-            value={author}
-            onChange={(e) => setAuthor(e.target.value)}
-          />
-          <button onClick={addBook}>Add</button>
-          <button onClick={generateAI}>✨ AI Summary</button>
+        <div className="books-header">
+          <div>
+            <h1 className="books-title">📚 Books</h1>
+            <p className="books-subtitle">Manage books, borrowers, stock, and AI summaries</p>
+          </div>
+          <div className="books-roleBadge">
+            Role: <strong>{role}</strong>
+          </div>
         </div>
-      )}
 
-      {aiSummary && (
-        <p style={{ marginTop: 10 }}>
-          <b>AI Summary:</b> {aiSummary}
-        </p>
-      )}
+        <div className="books-homeLinkWrap">
+          <Link href="/" className="books-homeLink">
+            ← Home
+          </Link>
+        </div>
 
-      {aiTags.length > 0 && (
-        <p>
-          <b>AI Tags:</b> {aiTags.join(", ")}
-        </p>
-      )}
+        {msg && <div className="books-alert">{msg}</div>}
 
-      <div style={{ marginTop: 16 }}>
-        <input
-          placeholder="Search by title or author..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          style={{ width: 320 }}
-        />
-      </div>
+        {(role === "admin" || role === "librarian") && (
+          <section className="books-panel">
+            <h2 className="books-panelTitle">Add a book</h2>
 
-      <ul style={{ marginTop: 24 }}>
-        {filteredBooks.map((b) => (
-          <li key={b.id} style={{ marginBottom: 12 }}>
-            <b>{b.title}</b> — {b.author}{" "}
-            {b.is_borrowed ? "(Borrowed)" : "(Available)"}
-            {b.ai_summary && (
-              <div style={{ marginTop: 6, maxWidth: 700 }}>
-                <small>
-                  <b>AI:</b> {b.ai_summary}
-                </small>
+            <div className="books-formGrid">
+              <input
+                className="books-input"
+                placeholder="Book title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+              <input
+                className="books-input"
+                placeholder="Author"
+                value={author}
+                onChange={(e) => setAuthor(e.target.value)}
+              />
+              <input
+                className="books-input"
+                type="number"
+                min={1}
+                placeholder="Quantity"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+              />
+              <div className="books-actionRow">
+                <button className="books-btn books-btnPrimary" onClick={addBook}>
+                  Add
+                </button>
+                <button className="books-btn" onClick={generateAI}>
+                  ✨ AI Summary
+                </button>
               </div>
-            )}
-            {Array.isArray(b.ai_tags) && b.ai_tags.length > 0 && (
-              <div>
-                <small>
-                  <b>Tags:</b> {b.ai_tags.join(", ")}
-                </small>
-              </div>
-            )}
-            <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
-              {b.is_borrowed ? (
-                <button onClick={() => returnBook(b.id)}>Return</button>
-              ) : (
-                <button onClick={() => borrowBook(b.id)}>Borrow</button>
-              )}
-
-              {(role === "admin" || role === "librarian") && (
-                <button onClick={() => deleteBook(b.id)}>Delete</button>
-              )}
             </div>
-          </li>
-        ))}
-      </ul>
+
+            {aiSummary && (
+              <div className="books-aiPreview">
+                <p>
+                  <strong>AI Summary:</strong> {aiSummary}
+                </p>
+                {aiTags.length > 0 && (
+                  <div className="books-tagWrap">
+                    {aiTags.map((tag, i) => (
+                      <span key={i} className="books-tag">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
+        <section className="books-panel">
+          <h2 className="books-panelTitle">Search & Borrower details</h2>
+
+          <div className="books-stack">
+            <input
+              className="books-input books-search"
+              placeholder="Search by title or author..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+
+            <div className="books-formGrid books-formGridBorrower">
+              <input
+                className="books-input"
+                placeholder="Your full name"
+                value={borrowFullName}
+                onChange={(e) => setBorrowFullName(e.target.value)}
+              />
+              <input
+                className="books-input"
+                placeholder="Your email"
+                value={borrowEmail}
+                onChange={(e) => setBorrowEmail(e.target.value)}
+              />
+              <input
+                className="books-input"
+                placeholder="Your phone"
+                value={borrowPhone}
+                onChange={(e) => setBorrowPhone(e.target.value)}
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="books-listSection">
+          {filteredBooks.length === 0 ? (
+            <div className="books-emptyState">
+              <p>No books found.</p>
+            </div>
+          ) : (
+            <ul className="books-list">
+              {filteredBooks.map((b) => {
+                const totalQty = Number(b.total_quantity ?? 1);
+                const availableQty = Number(
+                  b.available_quantity ?? (b.is_borrowed ? 0 : 1)
+                );
+                const borrowedQty = Math.max(totalQty - availableQty, 0);
+
+                return (
+                  <li key={b.id} className="books-item">
+                    <div className="books-itemHeader">
+                      <div>
+                        <h3 className="books-itemTitle">
+                          {b.title} <span className="books-itemDash">—</span> {b.author}
+                        </h3>
+
+                        <div className="books-statusRow">
+                          <span
+                            className={`books-statusChip ${
+                              b.is_borrowed ? "is-borrowed" : "is-available"
+                            }`}
+                          >
+                            {b.is_borrowed ? "Borrowed" : "Available"}
+                          </span>
+
+                          <span className="books-stockChip">
+                            Total: <strong>{totalQty}</strong>
+                          </span>
+                          <span className="books-stockChip">
+                            Left: <strong>{availableQty}</strong>
+                          </span>
+                          <span className="books-stockChip">
+                            Borrowed: <strong>{borrowedQty}</strong>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {b.is_borrowed && (
+                      <div className="books-metaBlock">
+                        <div className="books-metaLine">
+                          <strong>Borrowed by:</strong>{" "}
+                          {b.borrowerProfile?.full_name || "Unknown"}
+                        </div>
+
+                        <div className="books-metaLine books-metaLineWrap">
+                          {b.borrowerProfile?.email && (
+                            <span>📧 {b.borrowerProfile.email}</span>
+                          )}
+                          {b.borrowerProfile?.phone && (
+                            <span>📞 {b.borrowerProfile.phone}</span>
+                          )}
+                          {b.borrowed_at && (
+                            <span>🕒 {formatBorrowedAt(b.borrowed_at)}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {b.ai_summary && (
+                      <div className="books-aiBox">
+                        <div className="books-aiLabel">AI Summary</div>
+                        <p>{b.ai_summary}</p>
+
+                        {Array.isArray(b.ai_tags) && b.ai_tags.length > 0 && (
+                          <div className="books-tagWrap">
+                            {b.ai_tags.map((tag, idx) => (
+                              <span key={idx} className="books-tag">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="books-itemActions">
+                      {b.is_borrowed ? (
+                        <button
+                          className="books-btn books-btnPrimary"
+                          onClick={() => returnBook(b)}
+                        >
+                          Return
+                        </button>
+                      ) : (
+                        <button
+                          className="books-btn books-btnPrimary"
+                          onClick={() => borrowBook(b)}
+                          disabled={availableQty <= 0}
+                        >
+                          {availableQty <= 0 ? "Out of stock" : "Borrow"}
+                        </button>
+                      )}
+
+                      {(role === "admin" || role === "librarian") && (
+                        <button
+                          className="books-btn books-btnDanger"
+                          onClick={() => deleteBook(b.id)}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </div>
     </main>
   );
 }

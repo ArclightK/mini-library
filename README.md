@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 📚 Mini Library Management System (AI-Powered)
 
-## Getting Started
+A beginner-friendly **Mini Library Management System** built with **Next.js + Supabase + OpenAI**.
 
-First, run the development server:
+This project allows users to:
+- Manage books (add / delete)
+- Borrow and return books
+- Track stock (total copies / available copies)
+- Save borrower details (full name, email, phone)
+- Generate AI book summaries and tags
+- Use authentication with different roles (`admin`, `librarian`, `member`)
 
+---
+
+## ✨ Features
+
+### ✅ Book Management
+- Add new books (title, author, quantity)
+- Delete books (admin / librarian)
+- Search books by title or author
+
+### ✅ Borrow / Return System
+- Borrow a book (decreases available stock)
+- Return a book (increases available stock)
+- Stores borrower info:
+  - Full name
+  - Email
+  - Phone number
+  - Borrow date/time
+
+### ✅ Stock Tracking
+- Set how many copies exist for each title
+- See:
+  - **Total**
+  - **Available**
+  - **Borrowed**
+
+### ✅ AI Feature
+- Generate AI summary + tags before adding a book
+- Uses OpenAI API
+
+### ✅ Authentication + Roles
+- Supabase Auth (email/password)
+- Role-based behavior:
+  - **Admin**
+  - **Librarian**
+  - **Member**
+
+---
+
+## 🛠 Tech Stack
+
+- **Frontend:** Next.js (App Router) + TypeScript
+- **Backend / DB / Auth:** Supabase
+- **AI:** OpenAI API
+- **Deployment:** Vercel
+
+---
+
+## 📂 Project Structure
+
+- `app/page.tsx` → Home page
+- `app/login/page.tsx` → Login / Sign up page
+- `app/books/page.tsx` → Books page (main app logic)
+- `app/api/ai/book/route.ts` → AI summary API route
+- `app/globals.css` → Full project styling
+- `lib/supabaseClient.ts` → Supabase client setup
+
+---
+
+## ⚙️ How to Run Locally
+
+### 1) Clone the project
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
+cd YOUR_REPO_NAME

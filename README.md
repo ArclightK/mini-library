@@ -69,8 +69,20 @@ This project allows users to:
 ---
 
 ## ⚙️ How to Run Locally
-
-### 1) Clone the project
 ```bash
+### 1) Clone the project
 git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
 cd YOUR_REPO_NAME
+
+### 2) Install dependencies
+npm install
+
+### 3) Create .env.local
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+OPENAI_API_KEY=your_openai_api_key
+
+### 4) Run the app
+npm run dev
+
+Then open http://localhost:3000
